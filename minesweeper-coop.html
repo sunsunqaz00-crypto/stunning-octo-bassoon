@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>双人扫雷 · CoopMine</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1e3a5f;
+    --accent1: #00d4ff;
+    --accent2: #ff6b35;
+    --accent3: #7c3aed;
+    --p1: #00d4ff;
+    --p2: #ff6b35;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --mine: #ff3b5c;
+    --safe: #10b981;
+    --flag1: #00d4ff;
+    --flag2: #ff6b35;
+    --glow1: 0 0 20px rgba(0,212,255,0.4);
+    --glow2: 0 0 20px rgba(255,107,53,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans SC', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: 
+      radial-gradient(ellipse 80% 60% at 20% 10%, rgba(0,212,255,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 80%, rgba(255,107,53,0.05) 0%, transparent 60%),
+      repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(30,58,95,0.15) 40px, rgba(30,58,95,0.15) 41px),
+      repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(30,58,95,0.15) 40px, rgba(30,58,95,0.15) 41px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px 16px;
+  }
+
+  /* Header */
+  header {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+
+  .logo {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: clamp(28px, 5vw, 42px);
+    letter-spacing: 4px;
+    background: linear-gradient(135deg, var(--accent1) 0%, var(--accent3) 50%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: none;
+    filter: drop-shadow(0 0 30px rgba(0,212,255,0.5));
+  }
+
+  .tagline {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  /* Players Bar */
+  .players-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .player-card {
+    flex: 1;
+    min-width: 160px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .player-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    transition: opacity 0.3s;
+  }
+
+  .player-card.p1::before { background: var(--p1); }
+  .player-card.p2::before { background: var(--p2); }
+
+  .player-card.active {
+    border-color: currentColor;
+    box-shadow: 0 0 20px -5px currentColor;
+  }
+
+  .player-card.p1.active { color: var(--p1); box-shadow: var(--glow1); }
+  .player-card.p2.active { color: var(--p2); box-shadow: var(--glow2); }
+
+  .player-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .p1 .player-avatar { background: rgba(0,212,255,0.15); border: 1.5px solid var(--p1); }
+  .p2 .player-avatar { background: rgba(255,107,53,0.15); border: 1.5px solid var(--p2); }
+
+  .player-info { flex: 1; min-width: 0; }
+  .player-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .p1 .player-name { color: var(--p1); }
+  .p2 .player-name { color: var(--p2); }
+  .player-stats { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .player-score { font-family: 'Share Tech Mono', monospace; font-size: 20px; font-weight: 700; }
+  .p1 .player-score { color: var(--p1); }
+  .p2 .player-score { color: var(--p2); }
+
+  .turn-badge {
+    position: absolute;
+    top: 8px; right: 8px;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 20px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .p1 .turn-badge { background: rgba(0,212,255,0.2); color: var(--p1); }
+  .p2 .turn-badge { background: rgba(255,107,53,0.2); color: var(--p2); }
+  .active .turn-badge { opacity: 1; }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .difficulty-group {
+    display: flex;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .diff-btn {
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .diff-btn:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+
+  .diff-btn.active {
+    background: rgba(0,212,255,0.1);
+    color: var(--accent1);
+  }
+
+  .diff-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent1);
+  }
+
+  .btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent1), var(--accent3));
+    color: white;
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(0,212,255,0.4);
+  }
+
+  .btn-share {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .btn-share:hover {
+    border-color: var(--accent1);
+    color: var(--accent1);
+  }
+
+  .info-row {
+    display: flex;
+    gap: 12px;
+    margin-left: auto;
+    align-items: center;
+  }
+
+  .stat-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .stat-pill span { color: var(--text); font-weight: 600; }
+
+  /* Mode toggle */
+  .mode-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    align-items: center;
+  }
+
+  .mode-label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+
+  .mode-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    transition: all 0.2s;
+  }
+
+  .mode-btn.active.dig {
+    background: rgba(0,212,255,0.1);
+    border-color: var(--p1);
+    color: var(--p1);
+  }
+
+  .mode-btn.active.flag {
+    background: rgba(255,107,53,0.1);
+    border-color: var(--p2);
+    color: var(--p2);
+  }
+
+  .mode-hint { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+  /* Game Board */
+  .board-wrapper {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    overflow: auto;
+    position: relative;
+  }
+
+  #board {
+    display: grid;
+    gap: 2px;
+    width: fit-content;
+    margin: 0 auto;
+    user-select: none;
+  }
+
+  .cell {
+    width: 32px; height: 32px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.1s, background 0.15s;
+    position: relative;
+    background: var(--surface2);
+    border: 1px solid rgba(30,58,95,0.6);
+    color: transparent;
+    flex-shrink: 0;
+  }
+
+  .cell:hover:not(.revealed):not(.exploded) {
+    background: #1e3a5f;
+    transform: scale(1.05);
+    z-index: 1;
+  }
+
+  .cell.flagged-p1 {
+    background: rgba(0,212,255,0.12);
+    border-color: var(--p1);
+    color: var(--p1);
+  }
+
+  .cell.flagged-p2 {
+    background: rgba(255,107,53,0.12);
+    border-color: var(--p2);
+    color: var(--p2);
+  }
+
+  .cell.revealed {
+    background: rgba(255,255,255,0.04);
+    border-color: transparent;
+    cursor: default;
+    color: var(--text);
+  }
+
+  .cell.revealed:hover { transform: none; }
+
+  .cell.revealed.n1 { color: #60a5fa; }
+  .cell.revealed.n2 { color: #34d399; }
+  .cell.revealed.n3 { color: #f87171; }
+  .cell.revealed.n4 { color: #818cf8; }
+  .cell.revealed.n5 { color: #f59e0b; }
+  .cell.revealed.n6 { color: #06b6d4; }
+  .cell.revealed.n7 { color: #a78bfa; }
+  .cell.revealed.n8 { color: #94a3b8; }
+
+  .cell.mine-reveal {
+    background: rgba(255,59,92,0.15);
+    border-color: var(--mine);
+    color: var(--mine);
+    cursor: default;
+  }
+
+  .cell.exploded {
+    background: rgba(255,59,92,0.4) !important;
+    border-color: var(--mine) !important;
+    animation: explode 0.4s ease;
+    cursor: default;
+  }
+
+  .cell.dug-p1 {
+    box-shadow: inset 0 0 0 1px rgba(0,212,255,0.3);
+  }
+
+  .cell.dug-p2 {
+    box-shadow: inset 0 0 0 1px rgba(255,107,53,0.3);
+  }
+
+  @keyframes explode {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+  }
+
+  @keyframes reveal {
+    0% { transform: scale(0.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .cell.just-revealed {
+    animation: reveal 0.15s ease;
+  }
+
+  /* Overlay */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(8px);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .overlay.show { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 36px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+    position: relative;
+    animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes modalIn {
+    from { transform: scale(0.8) translateY(20px); opacity: 0; }
+    to { transform: scale(1) translateY(0); opacity: 1; }
+  }
+
+  .modal-icon { font-size: 60px; margin-bottom: 16px; }
+  .modal-title { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .modal-sub { color: var(--muted); font-size: 14px; margin-bottom: 24px; line-height: 1.6; }
+
+  .modal-scores {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .modal-score {
+    flex: 1;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+
+  .modal-score.p1 { border-color: rgba(0,212,255,0.3); background: rgba(0,212,255,0.05); }
+  .modal-score.p2 { border-color: rgba(255,107,53,0.3); background: rgba(255,107,53,0.05); }
+
+  .modal-score-name { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .modal-score-val { font-size: 28px; font-family: 'Share Tech Mono', monospace; font-weight: 700; }
+  .p1 .modal-score-val { color: var(--p1); }
+  .p2 .modal-score-val { color: var(--p2); }
+
+  .modal-btns { display: flex; gap: 10px; justify-content: center; }
+
+  /* Share modal */
+  .share-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .share-url {
+    flex: 1;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--accent1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-size: 13px;
+    color: var(--text);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    z-index: 200;
+    white-space: nowrap;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Responsive cells */
+  @media (max-width: 600px) {
+    .cell { width: 26px; height: 26px; font-size: 11px; border-radius: 4px; }
+    #board { gap: 1.5px; }
+  }
+
+  @media (max-width: 400px) {
+    .cell { width: 22px; height: 22px; font-size: 10px; }
+  }
+
+  .timer-display {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 22px;
+    color: var(--accent1);
+    letter-spacing: 2px;
+  }
+
+  /* Particle */
+  .particle {
+    position: fixed;
+    pointer-events: none;
+    font-size: 16px;
+    z-index: 300;
+    animation: floatUp 1s ease forwards;
+  }
+
+  @keyframes floatUp {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-60px) scale(1.5); }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo">⚡ CoopMine</div>
+    <div class="tagline">双人协作扫雷 · 携手拆弹</div>
+  </header>
+
+  <!-- Players -->
+  <div class="players-bar">
+    <div class="player-card p1 active" id="card-p1">
+      <div class="player-avatar">🔵</div>
+      <div class="player-info">
+        <div class="player-name" id="name-p1">玩家一</div>
+        <div class="player-stats">已挖开 <span id="dug-p1">0</span> 格 · 旗帜 <span id="flags-p1">0</span></div>
+      </div>
+      <div class="player-score" id="score-p1">0</div>
+      <div class="turn-badge">回合中</div>
+    </div>
+    <div class="player-card p2" id="card-p2">
+      <div class="player-avatar">🔴</div>
+      <div class="player-info">
+        <div class="player-name" id="name-p2">玩家二</div>
+        <div class="player-stats">已挖开 <span id="dug-p2">0</span> 格 · 旗帜 <span id="flags-p2">0</span></div>
+      </div>
+      <div class="player-score" id="score-p2">0</div>
+      <div class="turn-badge">回合中</div>
+    </div>
+
+    <!-- Timer & mines -->
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;flex-shrink:0;">
+      <div class="timer-display" id="timer">00:00</div>
+      <div class="stat-pill">💣 剩余 <span id="mines-left">0</span></div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="difficulty-group">
+      <button class="diff-btn active" onclick="setDiff('easy')">🟢 简单</button>
+      <button class="diff-btn" onclick="setDiff('medium')">🟡 中等</button>
+      <button class="diff-btn" onclick="setDiff('hard')">🔴 高难</button>
+    </div>
+    <button class="btn btn-primary" onclick="newGame()">🎮 新游戏</button>
+    <button class="btn btn-share" onclick="showShare()">🔗 分享给好友</button>
+    <div class="info-row">
+      <div class="stat-pill">进度 <span id="progress-text">0%</span></div>
+    </div>
+  </div>
+
+  <!-- Mode row -->
+  <div class="mode-row">
+    <span class="mode-label">操作模式：</span>
+    <button class="mode-btn active dig" id="btn-dig" onclick="setMode('dig')">⛏ 挖掘</button>
+    <button class="mode-btn flag" id="btn-flag" onclick="setMode('flag')">🚩 插旗</button>
+    <span class="mode-hint">右键 / 长按 = 快速切换插旗</span>
+  </div>
+
+  <!-- Board -->
+  <div class="board-wrapper">
+    <div id="board"></div>
+  </div>
+</div>
+
+<!-- End Modal -->
+<div class="overlay" id="overlay-end">
+  <div class="modal">
+    <div class="modal-icon" id="end-icon">🎉</div>
+    <div class="modal-title" id="end-title">游戏结束</div>
+    <div class="modal-sub" id="end-sub">太厉害了！</div>
+    <div class="modal-scores">
+      <div class="modal-score p1">
+        <div class="modal-score-name">🔵 玩家一</div>
+        <div class="modal-score-val" id="final-s1">0</div>
+      </div>
+      <div class="modal-score p2">
+        <div class="modal-score-name">🔴 玩家二</div>
+        <div class="modal-score-val" id="final-s2">0</div>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="newGame(); closeModal('overlay-end')">🔄 再来一局</button>
+      <button class="btn btn-share" onclick="showShare()">🔗 分享战绩</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal -->
+<div class="overlay" id="overlay-share">
+  <div class="modal">
+    <div class="modal-icon">📱</div>
+    <div class="modal-title">分享给好友</div>
+    <div class="modal-sub">把链接发给你的好友，两人在同一设备轮流操作，或各自打开链接独立游玩！</div>
+    <div class="share-box">
+      <span class="share-url" id="share-url">https://coopmine.game/play?code=ABC123</span>
+      <button class="btn btn-primary" onclick="copyLink()" style="padding:6px 12px;font-size:12px;">复制</button>
+    </div>
+    <div style="margin-bottom:20px;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">或者扫描二维码：</div>
+      <div id="qr-area" style="display:flex;justify-content:center;">
+        <canvas id="qr-canvas" width="120" height="120" style="border-radius:8px;border:1px solid var(--border);"></canvas>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="closeModal('overlay-share')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== GAME CONFIG =====
+const DIFFICULTIES = {
+  easy:   { rows: 9,  cols: 9,  mines: 10, label: '简单' },
+  medium: { rows: 14, cols: 18, mines: 40, label: '中等' },
+  hard:   { rows: 18, cols: 24, mines: 80, label: '高难' },
+};
+
+let difficulty = 'easy';
+let board = [];
+let gameState = 'idle'; // idle, playing, won, lost
+let currentPlayer = 1;
+let mode = 'dig'; // dig | flag
+let scores = [0, 0];
+let dug = [0, 0];
+let flagsPlaced = [0, 0];
+let minesLeft = 0;
+let timerInterval = null;
+let seconds = 0;
+let firstClick = true;
+let rows, cols, mines;
+
+// ===== INIT =====
+function setDiff(d) {
+  difficulty = d;
+  document.querySelectorAll('.diff-btn').forEach((b,i) => {
+    b.classList.toggle('active', ['easy','medium','hard'][i] === d);
+  });
+  newGame();
+}
+
+function newGame() {
+  const cfg = DIFFICULTIES[difficulty];
+  rows = cfg.rows; cols = cfg.cols; mines = cfg.mines;
+  minesLeft = mines;
+  scores = [0, 0];
+  dug = [0, 0];
+  flagsPlaced = [0, 0];
+  currentPlayer = 1;
+  firstClick = true;
+  gameState = 'playing';
+
+  clearInterval(timerInterval);
+  seconds = 0;
+  updateTimer();
+  timerInterval = setInterval(() => { seconds++; updateTimer(); }, 1000);
+
+  board = [];
+  for (let r = 0; r < rows; r++) {
+    board.push([]);
+    for (let c = 0; c < cols; c++) {
+      board[r].push({ mine: false, revealed: false, flaggedBy: 0, adjMines: 0, dugBy: 0 });
+    }
+  }
+
+  updateUI();
+  renderBoard();
+}
+
+function placeMines(safeR, safeC) {
+  let placed = 0;
+  while (placed < mines) {
+    const r = Math.floor(Math.random() * rows);
+    const c = Math.floor(Math.random() * cols);
+    if (!board[r][c].mine && !(Math.abs(r - safeR) <= 1 && Math.abs(c - safeC) <= 1)) {
+      board[r][c].mine = true;
+      placed++;
+    }
+  }
+  // calc adjacent
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!board[r][c].mine) {
+        board[r][c].adjMines = countAdj(r, c);
+      }
+    }
+  }
+}
+
+function countAdj(r, c) {
+  let count = 0;
+  for (let dr = -1; dr <= 1; dr++)
+    for (let dc = -1; dc <= 1; dc++) {
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && board[nr][nc].mine) count++;
+    }
+  return count;
+}
+
+function neighbors(r, c) {
+  const res = [];
+  for (let dr = -1; dr <= 1; dr++)
+    for (let dc = -1; dc <= 1; dc++) {
+      const nr = r + dr, nc = c + dc;
+      if ((dr || dc) && nr >= 0 && nr < rows && nc >= 0 && nc < cols) res.push([nr, nc]);
+    }
+  return res;
+}
+
+// ===== ACTIONS =====
+function clickCell(r, c) {
+  if (gameState !== 'playing') return;
+  const cell = board[r][c];
+
+  if (mode === 'flag') {
+    toggleFlag(r, c);
+    return;
+  }
+
+  // Dig mode
+  if (cell.revealed || cell.flaggedBy) return;
+
+  if (firstClick) {
+    firstClick = false;
+    placeMines(r, c);
+  }
+
+  if (cell.mine) {
+    // Boom!
+    cell.revealed = true;
+    cell.exploded = true;
+    gameState = 'lost';
+    clearInterval(timerInterval);
+    revealAllMines();
+    updateCell(r, c);
+    spawnParticle(r, c, '💥');
+    setTimeout(() => showEnd(false), 800);
+    return;
+  }
+
+  const revealed = floodReveal(r, c, currentPlayer);
+  // Score: +1 per safe cell revealed
+  scores[currentPlayer - 1] += revealed;
+  dug[currentPlayer - 1] += revealed;
+
+  if (revealed > 0) spawnParticle(r, c, currentPlayer === 1 ? '✨' : '🔥');
+
+  checkWin();
+  switchTurn();
+  updateUI();
+}
+
+function toggleFlag(r, c) {
+  if (gameState !== 'playing') return;
+  const cell = board[r][c];
+  if (cell.revealed) return;
+
+  if (cell.flaggedBy === currentPlayer) {
+    cell.flaggedBy = 0;
+    flagsPlaced[currentPlayer - 1]--;
+    minesLeft++;
+  } else if (cell.flaggedBy === 0) {
+    cell.flaggedBy = currentPlayer;
+    flagsPlaced[currentPlayer - 1]++;
+    minesLeft--;
+    // Bonus if correctly flagged mine
+    if (cell.mine) {
+      scores[currentPlayer - 1] += 3;
+      spawnParticle(r, c, '🚩');
+    }
+  } else {
+    // Override other player's flag
+    const prev = cell.flaggedBy;
+    flagsPlaced[prev - 1]--;
+    if (cell.mine) scores[prev - 1] = Math.max(0, scores[prev - 1] - 3);
+    cell.flaggedBy = currentPlayer;
+    flagsPlaced[currentPlayer - 1]++;
+    minesLeft = mines - flagsPlaced[0] - flagsPlaced[1];
+    if (cell.mine) scores[currentPlayer - 1] += 3;
+  }
+
+  updateCell(r, c);
+  switchTurn();
+  updateUI();
+}
+
+function floodReveal(r, c, player) {
+  const queue = [[r, c]];
+  let count = 0;
+  const visited = new Set();
+
+  while (queue.length) {
+    const [cr, cc] = queue.shift();
+    const key = cr * cols + cc;
+    if (visited.has(key)) continue;
+    visited.add(key);
+
+    const cell = board[cr][cc];
+    if (cell.revealed || cell.mine) continue;
+    if (cell.flaggedBy) {
+      cell.flaggedBy = 0;
+      minesLeft++;
+    }
+
+    cell.revealed = true;
+    cell.dugBy = player;
+    count++;
+    updateCell(cr, cc);
+
+    if (cell.adjMines === 0) {
+      for (const [nr, nc] of neighbors(cr, cc)) {
+        if (!board[nr][nc].revealed) queue.push([nr, nc]);
+      }
+    }
+  }
+  return count;
+}
+
+function revealAllMines() {
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      if (board[r][c].mine && !board[r][c].revealed) {
+        board[r][c].revealed = true;
+        updateCell(r, c);
+      }
+    }
+}
+
+function checkWin() {
+  const totalSafe = rows * cols - mines;
+  const revealedSafe = board.flat().filter(c => c.revealed && !c.mine).length;
+  if (revealedSafe >= totalSafe) {
+    gameState = 'won';
+    clearInterval(timerInterval);
+    setTimeout(() => showEnd(true), 400);
+  }
+}
+
+function switchTurn() {
+  currentPlayer = currentPlayer === 1 ? 2 : 1;
+  document.getElementById('card-p1').classList.toggle('active', currentPlayer === 1);
+  document.getElementById('card-p2').classList.toggle('active', currentPlayer === 2);
+}
+
+// ===== RENDER =====
+function renderBoard() {
+  const b = document.getElementById('board');
+  b.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  b.innerHTML = '';
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.r = r;
+      el.dataset.c = c;
+      el.addEventListener('click', () => clickCell(r, c));
+      el.addEventListener('contextmenu', e => { e.preventDefault(); const prev = mode; setMode(mode === 'flag' ? 'dig' : 'flag'); clickCell(r, c); setMode(prev); });
+      // Long press for mobile
+      let pressTimer;
+      el.addEventListener('touchstart', e => { e.preventDefault(); pressTimer = setTimeout(() => { const prev = mode; setMode('flag'); clickCell(r, c); setMode(prev); }, 400); });
+      el.addEventListener('touchend', () => clearTimeout(pressTimer));
+      el.addEventListener('touchmove', () => clearTimeout(pressTimer));
+      b.appendChild(el);
+    }
+  }
+}
+
+function cellEl(r, c) {
+  return document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+}
+
+function updateCell(r, c) {
+  const cell = board[r][c];
+  const el = cellEl(r, c);
+  if (!el) return;
+
+  el.className = 'cell';
+  el.textContent = '';
+
+  if (cell.revealed) {
+    if (cell.exploded) {
+      el.classList.add('revealed', 'exploded');
+      el.textContent = '💣';
+    } else if (cell.mine) {
+      el.classList.add('revealed', 'mine-reveal');
+      el.textContent = '💣';
+    } else {
+      el.classList.add('revealed', 'just-revealed');
+      if (cell.dugBy === 1) el.classList.add('dug-p1');
+      if (cell.dugBy === 2) el.classList.add('dug-p2');
+      if (cell.adjMines > 0) {
+        el.classList.add(`n${cell.adjMines}`);
+        el.textContent = cell.adjMines;
+      }
+      setTimeout(() => el.classList.remove('just-revealed'), 200);
+    }
+  } else if (cell.flaggedBy === 1) {
+    el.classList.add('flagged-p1');
+    el.textContent = '🚩';
+  } else if (cell.flaggedBy === 2) {
+    el.classList.add('flagged-p2');
+    el.textContent = '🚩';
+  }
+}
+
+function updateUI() {
+  document.getElementById('score-p1').textContent = scores[0];
+  document.getElementById('score-p2').textContent = scores[1];
+  document.getElementById('dug-p1').textContent = dug[0];
+  document.getElementById('dug-p2').textContent = dug[1];
+  document.getElementById('flags-p1').textContent = flagsPlaced[0];
+  document.getElementById('flags-p2').textContent = flagsPlaced[1];
+  document.getElementById('mines-left').textContent = Math.max(0, minesLeft);
+
+  const total = rows * cols - mines;
+  const revealed = board.flat().filter(c => c.revealed && !c.mine).length;
+  const pct = total > 0 ? Math.round(revealed / total * 100) : 0;
+  document.getElementById('progress-text').textContent = pct + '%';
+}
+
+function updateTimer() {
+  const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const s = String(seconds % 60).padStart(2, '0');
+  document.getElementById('timer').textContent = `${m}:${s}`;
+}
+
+// ===== MODE =====
+function setMode(m) {
+  mode = m;
+  const btnDig = document.getElementById('btn-dig');
+  const btnFlag = document.getElementById('btn-flag');
+  btnDig.className = 'mode-btn' + (m === 'dig' ? ' active dig' : '');
+  btnFlag.className = 'mode-btn' + (m === 'flag' ? ' active flag' : '');
+}
+
+// ===== END SCREEN =====
+function showEnd(won) {
+  document.getElementById('end-icon').textContent = won ? '🎉' : '💥';
+  document.getElementById('end-title').textContent = won ? '恭喜通关！' : '踩到地雷了！';
+
+  const timeStr = document.getElementById('timer').textContent;
+  const winner = scores[0] > scores[1] ? '玩家一领先' : scores[1] > scores[0] ? '玩家二领先' : '两人平局';
+  document.getElementById('end-sub').textContent = won
+    ? `用时 ${timeStr}，难度 ${DIFFICULTIES[difficulty].label}，${winner}！`
+    : `哦不！${currentPlayer === 1 ? '玩家一' : '玩家二'}触发地雷！用时 ${timeStr}`;
+
+  document.getElementById('final-s1').textContent = scores[0];
+  document.getElementById('final-s2').textContent = scores[1];
+  document.getElementById('overlay-end').classList.add('show');
+}
+
+// ===== SHARE =====
+function showShare() {
+  const code = Math.random().toString(36).substr(2, 8).toUpperCase();
+  const url = `${location.origin}${location.pathname}?mode=coop&diff=${difficulty}&code=${code}`;
+  document.getElementById('share-url').textContent = url;
+  drawQR(url);
+  document.getElementById('overlay-share').classList.add('show');
+}
+
+function copyLink() {
+  const url = document.getElementById('share-url').textContent;
+  navigator.clipboard.writeText(url).catch(() => {});
+  showToast('🔗 链接已复制！快发给好友吧');
+}
+
+// Simple QR-like visual (decorative)
+function drawQR(text) {
+  const canvas = document.getElementById('qr-canvas');
+  const ctx = canvas.getContext('2d');
+  const size = 120;
+  canvas.width = canvas.height = size;
+  ctx.fillStyle = '#111827';
+  ctx.fillRect(0, 0, size, size);
+
+  // Use a hash of text to make deterministic pattern
+  let hash = 0;
+  for (const ch of text) hash = ((hash << 5) - hash) + ch.charCodeAt(0);
+
+  const cells = 21;
+  const cellSize = size / cells;
+  // Corner squares
+  const drawCorner = (x, y) => {
+    ctx.fillStyle = '#00d4ff';
+    ctx.fillRect(x * cellSize, y * cellSize, 7 * cellSize, 7 * cellSize);
+    ctx.fillStyle = '#111827';
+    ctx.fillRect((x + 1) * cellSize, (y + 1) * cellSize, 5 * cellSize, 5 * cellSize);
+    ctx.fillStyle = '#00d4ff';
+    ctx.fillRect((x + 2) * cellSize, (y + 2) * cellSize, 3 * cellSize, 3 * cellSize);
+  };
+  drawCorner(0, 0); drawCorner(14, 0); drawCorner(0, 14);
+
+  // Random data area
+  let rng = hash;
+  const next = () => { rng = (rng * 1664525 + 1013904223) & 0xffffffff; return (rng >>> 0) / 0xffffffff; };
+  for (let r = 0; r < cells; r++) {
+    for (let c = 0; c < cells; c++) {
+      if ((r < 8 && c < 8) || (r < 8 && c >= 13) || (r >= 13 && c < 8)) continue;
+      if (next() > 0.55) {
+        ctx.fillStyle = next() > 0.5 ? '#00d4ff' : '#7c3aed';
+        ctx.fillRect(c * cellSize, r * cellSize, cellSize - 0.5, cellSize - 0.5);
+      }
+    }
+  }
+}
+
+// ===== TOAST =====
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ===== PARTICLES =====
+function spawnParticle(r, c, emoji) {
+  const el = cellEl(r, c);
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const p = document.createElement('div');
+  p.className = 'particle';
+  p.textContent = emoji;
+  p.style.left = rect.left + rect.width / 2 + 'px';
+  p.style.top = rect.top + 'px';
+  document.body.appendChild(p);
+  setTimeout(() => p.remove(), 1000);
+}
+
+// ===== MODAL =====
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+document.querySelectorAll('.overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); });
+});
+
+// ===== START =====
+newGame();
+</script>
+</body>
+</html>
